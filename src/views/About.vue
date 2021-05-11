@@ -42,13 +42,58 @@ export default {
       ]
     }
 
+    const session = {
+      id: "ed51046d-7552-4fee-8d25-ced773e785ae",
+      name: "web-mouse-example-session",
+      processingModules: [{
+        id: "8ce44fda-a037-4457-84e0-dc824fc9689a",
+        name: "mirror-mouse-pointer",
+        inputs: [{internalName: "clientPointer", messageFormat: "ubii.dataStructure.Vector2"},{internalName: "mirrorPointer", messageFormat: "bool"}],
+        outputs: [{internalName: "serverPointer", messageFormat: "ubii.dataStructure.Vector2"}]
+      }]
+    }
+
+    litegraph.LiteGraph.clearRegisteredTypes()
+
     client.devices.forEach(device => {
       this.registerClientNode(client.name, device, device.components)
     })
     
+    session.processingModules.forEach(proc => {
+      this.registerProcessNode(session.name, proc, proc.inputs, proc.outputs)
+    })
 
   },
   methods: {
+    registerProcessNode: function(sname, proc, inp, out) {
+      //node constructor class
+      function node()
+      {
+        
+        inp.forEach(i => {
+          this.addInput(i.internalName, i.messageFormat)
+        })
+        out.forEach(o => {
+          this.addOutput(o.internalName, o.messageFormat)
+        })
+      }
+      node.title = proc.name
+
+      //function to call when the node is executed
+      node.prototype.onExecute = function()
+      {
+        // var A = this.getInputData(0);
+        // if( A === undefined )
+        //   A = 0;
+        // var B = this.getInputData(1);
+        // if( B === undefined )
+        //   B = 0;
+        // this.setOutputData( 0, A + B );
+      }
+
+      litegraph.LiteGraph.registerNodeType("Sessions/"+sname+"/"+proc.name, node)
+
+    },
     registerClientNode: function (clientName, dev, comp) {
 
       //node constructor class
@@ -56,10 +101,10 @@ export default {
       {
         
         comp.forEach(c => {
-          if (c.ioType == 0)
-            this.addInput(c.topic, c.messageFormat)
+          if (c.ioType == 1)
+            this.addInput(c.topic.split("/").pop(), c.messageFormat)
           else
-            this.addOutput(c.topic, c.messageFormat) 
+            this.addOutput(c.topic.split("/").pop(), c.messageFormat) 
         })
       }
       //this.properties = { precision: 1 };
@@ -78,7 +123,7 @@ export default {
       }
 
       //register in the system
-      litegraph.LiteGraph.registerNodeType(clientName+"/"+dev.name, node)
+      litegraph.LiteGraph.registerNodeType("Clients/"+clientName+"/"+dev.name, node)
     },
     addNode: function(id, device, components) {
 

@@ -163,7 +163,7 @@ export default {
         ) : null
     
         const sList = res?.sessionList ?? {}
-
+        console.log(sList)
         try { 
           this.sessionOptions = sList.filter(val => val.status === 1).map(val => {
               return { 
