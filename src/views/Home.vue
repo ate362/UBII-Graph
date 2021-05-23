@@ -110,7 +110,7 @@ export default {
       ) : null
 
       const constJson = res?.server?.constantsJson ?? '{}'
-
+      console.log(constJson)
       try { 
         const jRes = await JSON.parse(constJson)
         this.obj_services = jRes['DEFAULT_TOPICS']['SERVICES']

@@ -76,6 +76,8 @@ export default {
         out.forEach(o => {
           this.addOutput(o.internalName, o.messageFormat)
         })
+
+        this.properties = { precision: true };
       }
       node.title = proc.name
 
