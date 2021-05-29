@@ -44,7 +44,7 @@
 </template>
 
 <script>
-import UbiiClientService from '../ubiiNode/ubiiClientService'
+import { UbiiClientService } from '@tum-far/ubii-node-webbrowser';
 import { DEFAULT_TOPICS } from '@tum-far/ubii-msg-formats';
 
 import ExampleMousePointer from '../components/MouseExample.vue'
@@ -155,13 +155,12 @@ export default {
     },
     loadSession: async function({ action/*, callback*/ }) {
       if (action === LOAD_ROOT_OPTIONS) {
-
         const res = (UbiiClientService.isConnected()) ? await UbiiClientService.client.callService(
           {
             topic: DEFAULT_TOPICS.SERVICES.SESSION_RUNTIME_GET_LIST
           }
         ) : null
-    
+        
         const sList = res?.sessionList ?? {}
         console.log(sList)
         try { 

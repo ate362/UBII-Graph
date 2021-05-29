@@ -14,7 +14,7 @@ import * as litegraph from "litegraph.js";
 // import uuid4 from "uuid";
 import "litegraph.js/css/litegraph.css";
 
-import UbiiClientService from '../ubiiNode/ubiiClientService'
+import { UbiiClientService } from '@tum-far/ubii-node-webbrowser';
 import { DEFAULT_TOPICS } from '@tum-far/ubii-msg-formats';
 
 import Error from '../components/Error.vue'
@@ -45,11 +45,15 @@ export default {
       selectedSession: null,
       availableSessions: null,
 
-      clientsOfInterest: null
+      clientsOfInterest: null,
+
+      ClSeNodes: []
     };
   },
 
   mounted() {
+    UbiiClientService.setName('ubii-node-webbrowser VueJS Test');
+    UbiiClientService.connect(this.serverIP, this.servicePort);
     this.graph = new litegraph.LGraph();
     this.lGraphCanvas = new litegraph.LGraphCanvas('#canvas', this.graph);
     this.graph.start();
@@ -119,10 +123,15 @@ export default {
       //register in the system
       litegraph.LiteGraph.registerNodeType("Clients/"+clientName+"/"+dev.name, node)
     },
-    addNode: function(name, pos) {
+    addNode: function(name, pos, io, type) {
 
       var node_const = litegraph.LiteGraph.createNode(name);
       node_const.pos = pos;
+      this.ClSeNodes.push({
+            type: type,
+            edges: io,
+            node: node_const
+          })
       this.graph.add(node_const);
     },
     loadProcModules: async function () {
@@ -162,7 +171,7 @@ export default {
       await this.loadClients(clientsDevices)
     },
     loadClients: async function (filts) {
-
+      await UbiiClientService.waitForConnection()
       const res = (UbiiClientService.isConnected()) ? await UbiiClientService.client.callService(
         {
           topic: DEFAULT_TOPICS.SERVICES.CLIENT_GET_LIST
@@ -179,9 +188,8 @@ export default {
         return val.split('.')[1]
       })
 
-
       try {
-        this.clientsOfInterest = sList.filter(val => val.state === 2 && clientFilts.includes(val.id))
+        this.clientsOfInterest = sList.filter(val => val.state === 0 && clientFilts.includes(val.id))
         this.clientsOfInterest.forEach(client => {
           client.devices = client.devices.filter(val => deviceFilts.includes(val.name))
         })
@@ -203,15 +211,30 @@ export default {
     },
     addSessionNodes: async function () {
       this.selectedSession.processingModules.forEach(proc => {
+        const io = this.selectedSession.ioMappings.filter(val => proc.id === val.processingModuleId)[0]
         proc.position = [600,200];
-        this.addNode("Sessions/"+this.selectedSession.name+"/"+proc.name, proc.position )
+        this.addNode("Sessions/"+this.selectedSession.name+"/"+proc.name, proc.position, io, 'Session' )
       })
     },
     addClientNodes: async function () {
       this.clientsOfInterest.forEach(client => {
         client.devices.forEach(device => {
           device.position = [200,200];
-          this.addNode("Clients/"+client.name+"/"+device.name, device.position)
+          this.addNode("Clients/"+client.name+"/"+device.name, device.position, device.components, 'ClientDevice')
+        })
+      })
+    },
+    connectNodes: async function () {
+      const c = this.ClSeNodes.filter(val => val.type === 'ClientDevice')
+      const s = this.ClSeNodes.filter(val => val.type === 'Session')
+      s.forEach(session => {
+        session.edges.inputMappings.forEach((i,index) => {
+          const dc = c.filter(val => val.edges.filter(e => e.topic === i.topic))[0]
+          if (dc !== null) dc.node.connect(index, session.node, index)
+        })
+        session.edges.outputMappings.forEach((o,index) => {
+          const dc = c.filter(val => val.edges.filter(e => e.topic === o.topic))[0]
+          if (dc !== null) session.node.connect(index, dc.node, index)
         })
       })
     },
@@ -223,19 +246,21 @@ export default {
       await this.calcPostions()
       await this.addClientNodes()
       await this.addSessionNodes()
+      await this.connectNodes()
       // console.log(this.selectedSession)
     },
     loadOps: async function({ action/*, callback*/ }) {
       if (action === LOAD_ROOT_OPTIONS) {
 
+        await UbiiClientService.waitForConnection()
         const res = (UbiiClientService.isConnected()) ? await UbiiClientService.client.callService(
           {
             topic: DEFAULT_TOPICS.SERVICES.SESSION_RUNTIME_GET_LIST
           }
         ) : null
-    
+
         const sList = res?.sessionList ?? {}
-        // console.log(sList)
+
         try { 
           this.availableSessions = sList.filter(val => val.status === 1).map(val => {
               return { 

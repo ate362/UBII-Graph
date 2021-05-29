@@ -101,7 +101,7 @@
 
 import ProtobufLibrary from '@tum-far/ubii-msg-formats/dist/js/protobuf';
 import { DEFAULT_TOPICS } from '@tum-far/ubii-msg-formats';
-import UbiiClientService from '../ubiiNode/ubiiClientService.js';
+import { UbiiClientService } from '@tum-far/ubii-node-webbrowser';
 
 export default {
   name: 'ExampleMousePointer',
