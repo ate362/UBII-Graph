@@ -5,7 +5,24 @@
     <span style="padding-right: 5px;">Sessions:</span>
     <treeselect v-model="selectedSessionId" @input="showSessionPipeline()" :load-options="loadOps" :options="availableSessions" :auto-load-root-options="false" :multiple="false" placeholder="Sessions..."/>
   </div>
+  <b-row no-gutters>
+    <b-col>
+      <b-tabs content-class="mt-3">
+        <b-tab title="Clients" active>
+          <b-list-group>
+            <b-list-group-item>Add Clients to the Graph.</b-list-group-item>
+          </b-list-group>
+        </b-tab>
+        <b-tab title="Processing Modules">
+          <b-list-group>
+            <b-list-group-item>Add Processing Modules to the Graph.</b-list-group-item>
+          </b-list-group>
+        </b-tab>
+      </b-tabs>
+    </b-col><b-col>
     <canvas id="canvas" class='litegraph' width='1024' height='720' style='border: 1px solid;'></canvas>
+    </b-col>
+  </b-row>
   </div>
 </template>
 <script>
