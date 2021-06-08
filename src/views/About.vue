@@ -3,7 +3,13 @@
   <Error :alert="trigger" :msg="msg"/>
   <div class="header-editor">
     <span style="padding-right: 5px;">Sessions:</span>
-    <treeselect v-model="selectedSessionId" @input="showSessionPipeline()" :load-options="loadOps" :options="availableSessions" :auto-load-root-options="false" :multiple="false" placeholder="Sessions..."/>
+    <treeselect v-model="selectedSessionId" 
+      @input="showSessionPipeline()"
+      :load-options="loadOps" 
+      :options="availableSessions" 
+      :auto-load-root-options="false" 
+      :multiple="false" 
+      placeholder="Sessions..."/>
   </div>
   <b-row no-gutters>
     <b-col>
@@ -11,6 +17,17 @@
         <b-tab title="Clients" active>
           <b-list-group>
             <b-list-group-item>Add Clients to the Graph.</b-list-group-item>
+            <b-list-group-item v-for="clients in addClientsList" :key="clients.id">
+              <b-card
+                title="Client.Device.Name"
+              >
+              <b-card-text>{{clients.id}}.{{clients.name}}</b-card-text>
+              <div >
+                <b-button variant="outline-primary" style="margin: 2px;">Add Client to Graph</b-button>
+                <b-button variant="outline-primary" style="margin: 2px;">Remove Client from Graph</b-button>
+              </div>
+              </b-card>
+            </b-list-group-item>
           </b-list-group>
         </b-tab>
         <b-tab title="Processing Modules">
@@ -64,6 +81,9 @@ export default {
 
       clientsOfInterest: null,
 
+      addClientsList: [],
+      addProcsList: null,
+
       ClSeNodes: []
     };
   },
@@ -76,9 +96,49 @@ export default {
     this.graph.start();
     
     litegraph.LiteGraph.clearRegisteredTypes()
+    this.addClientsToList();
+    this.addProcsToList();
         
   },
   methods: {
+    clearBeforeRender: async function() {
+      this.ClSeNodes = []
+      this.graph.clear()
+      litegraph.LiteGraph.clearRegisteredTypes()
+    },
+    addClientsToList: async function() {
+      await UbiiClientService.waitForConnection()
+      const res = (UbiiClientService.isConnected()) ? await UbiiClientService.client.callService(
+        {
+          topic: DEFAULT_TOPICS.SERVICES.CLIENT_GET_LIST
+        }
+      ) : null
+      
+      const cList = res?.elements ?? {}
+
+      cList.filter(val => val.state === 0).forEach(client => {
+        client.devices.forEach(dev => {
+          this.addClientsList.push(
+            {
+              id: dev.clientId+'.'+dev.id,
+              name: dev.name
+            }
+          )
+        })
+      })
+    
+    },
+    addProcsToList: async function() {
+      
+      await UbiiClientService.waitForConnection()
+      const res = (UbiiClientService.isConnected()) ? await UbiiClientService.client.callService(
+        {
+          topic: DEFAULT_TOPICS.SERVICES.PM_RUNTIME_GET_LIST
+        }
+      ) : null
+      console.log('hello')
+      console.log(res)
+    },
     registerProcessNode: function(sname, proc, inp, out) {
       //node constructor class
       function node()
@@ -93,6 +153,7 @@ export default {
 
       }
       node.title = proc.name
+      node.title_color = "#243";
 
       //function to call when the node is executed
       node.prototype.onExecute = function()
@@ -122,8 +183,25 @@ export default {
             this.addOutput(c.topic.split("/").pop(), c.messageFormat) 
         })
       }
-      //this.properties = { precision: 1 };
+      // this.properties = { precision: 1 };
       node.title = dev.name
+      node.title_color = "#345";
+      node.slot_start_y = 40;
+
+      node.prototype.onDrawForeground = function(ctx)
+      {
+        if(this.flags.collapsed)
+          return;
+        ctx.fillStyle = "#555";
+        ctx.fillRect(0,0,this.size[0],40);
+        
+        ctx.fillStyle = "#AAA";
+        ctx.fillText("Client.ID: "+dev.clientId, 2, 15 );
+        ctx.fillText("Dev.ID:    "+dev.id, 2, 30 );
+      }
+
+
+      
 
       //function to call when the node is executed
       node.prototype.onExecute = function()
@@ -136,6 +214,8 @@ export default {
         //   B = 0;
         // this.setOutputData( 0, A + B );
       }
+
+      
 
       //register in the system
       litegraph.LiteGraph.registerNodeType("Clients/"+clientName+"/"+dev.name, node)
@@ -168,6 +248,7 @@ export default {
         }
     },
     registerSessionNodes: async function () {
+      if (!this.selectedSession?.processingModules || this.selectedSession.processingModules.length === 0) throw 'Session has no processing modules.'
       this.selectedSession.processingModules.forEach(proc => {
         this.registerProcessNode(this.selectedSession.name, proc, proc.inputs, proc.outputs)
       })
@@ -256,14 +337,21 @@ export default {
       })
     },
     showSessionPipeline: async function() {
+      await this.clearBeforeRender()
+      if(!this.selectedSessionId) return
       await this.loadProcModules()
-      await this.registerSessionNodes()
-      await this.loadComponents()
-      await this.registerClientNodes()
-      await this.calcPostions()
-      await this.addClientNodes()
-      await this.addSessionNodes()
-      await this.connectNodes()
+      try {
+        await this.registerSessionNodes()
+        await this.loadComponents()
+        await this.registerClientNodes()
+        await this.calcPostions()
+        await this.addClientNodes()
+        await this.addSessionNodes()
+        await this.connectNodes()
+      } catch (error) {
+        console.log(error)
+      }
+      
       // console.log(this.selectedSession)
     },
     loadOps: async function({ action/*, callback*/ }) {
