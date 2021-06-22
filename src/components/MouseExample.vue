@@ -111,17 +111,17 @@ export default {
     window.addEventListener('beforeunload', () => {
       this.stopExample();
     });
-    UbiiClientService.on(UbiiClientService.EVENTS.CONNECT, () => {
+    UbiiClientService.instance.on(UbiiClientService.EVENTS.CONNECT, () => {
       this.startExample();
     });
-    UbiiClientService.on(UbiiClientService.EVENTS.DISCONNECT, () => {
+    UbiiClientService.instance.on(UbiiClientService.EVENTS.DISCONNECT, () => {
       this.stopExample();
     });
     // make sure we're connected, then start the example
-    UbiiClientService.waitForConnection().then(() => {
+    UbiiClientService.instance.waitForConnection().then(() => {
       this.startExample();
     });
-    UbiiClientService.onDisconnect(() => {
+    UbiiClientService.instance.onDisconnect(() => {
       this.stopExample();
     });
   },
@@ -133,7 +133,7 @@ export default {
       showClientPointer: true,
       showServerPointer: true,
       mirrorPointer: false,
-      ubiiClientService: UbiiClientService,
+      UbiiClientService: UbiiClientService.instance,
       exampleStarted: false,
       clientMousePosition: { x: 0, y: 0 },
       serverMousePosition: { x: 0, y: 0 },
@@ -143,7 +143,7 @@ export default {
   watch: {
     mirrorPointer: function(value) {
       if (
-        !UbiiClientService.isConnected() ||
+        !UbiiClientService.instance.isConnected() ||
         !this.ubiiDevice.name ||
         !this.ubiiComponentMirrorPointer.topic
       ) {
@@ -158,12 +158,12 @@ export default {
       // helper definitions that we can reference later
       let deviceName = 'web-example-mouse-pointer';
       let topicPrefix =
-        '/' + UbiiClientService.getClientID() + '/' + deviceName;
+        '/' + UbiiClientService.instance.getClientID() + '/' + deviceName;
       // define our abstract device and its components
       // specification of a ubii.devices.Device
       // https://gitlab.lrz.de/IN-FAR/Ubi-Interact/ubii-msg-formats/blob/develop/src/proto/devices/device.proto
       this.ubiiDevice = {
-        clientId: UbiiClientService.getClientID(),
+        clientId: UbiiClientService.instance.getClientID(),
         name: deviceName,
         deviceType: ProtobufLibrary.ubii.devices.Device.DeviceType.PARTICIPANT,
         components: [
@@ -277,12 +277,12 @@ export default {
       }
       this.$data.exampleStarted = true;
       // make sure we're connected, then continue
-      UbiiClientService.waitForConnection().then(() => {
+      UbiiClientService.instance.waitForConnection().then(() => {
         // create all the specifications we need to define our example application
         // these are protobuf messages to be sent to the server (saved in this.$data)
         this.createUbiiSpecs();
         // register the mouse pointer device
-        UbiiClientService.registerDevice(this.ubiiDevice)
+        UbiiClientService.instance.registerDevice(this.ubiiDevice)
           .then(response => {
             // the device specs we send to backend intentionally left out the device ID
             // if the backend accepts the device registration, it will send back our specs
@@ -300,13 +300,13 @@ export default {
           })
           .then(() => {
             // subscribe to the device topics so we are notified when new data arrives on the topic
-            UbiiClientService.subscribeTopic(
+            UbiiClientService.instance.subscribeTopic(
               this.ubiiComponentServerPointer.topic,
               // a callback to be called when new data on this topic arrives
               this.subscriptionServerPointerPosition
             );
             // start our session (registering not necessary as we do not want to save it permanently)
-            UbiiClientService.client
+            UbiiClientService.instance.client
               .callService({
                 topic: DEFAULT_TOPICS.SERVICES.SESSION_RUNTIME_START,
                 session: this.ubiiSession
@@ -323,16 +323,16 @@ export default {
       if (!this.exampleStarted) return;
       this.exampleStarted = false;
       // unsubscribe and stop session
-      UbiiClientService.unsubscribeTopic(
+      UbiiClientService.instance.unsubscribeTopic(
         this.ubiiComponentServerPointer.topic,
         this.subscriptionServerPointerPosition
       );
-      UbiiClientService.client.callService({
+      UbiiClientService.instance.client.callService({
         topic: DEFAULT_TOPICS.SERVICES.SESSION_RUNTIME_STOP,
         session: this.ubiiSession
       });
       if (this.ubiiDevice) {
-        await UbiiClientService.deregisterDevice(this.ubiiDevice);
+        await UbiiClientService.instance.deregisterDevice(this.ubiiDevice);
       }
     },
     /* publishing and subscribing */
@@ -349,14 +349,14 @@ export default {
     },
     publishClientPointerPosition: function(vec2) {
       // publish our normalized client mouse position
-      UbiiClientService.publishRecord({
+      UbiiClientService.instance.publishRecord({
         topic: this.ubiiComponentClientPointer.topic,
         vector2: vec2
       });
     },
     publishMirrorPointer: function(boolean) {
       // if the checkbox is changed, we publish this info on the related topic
-      UbiiClientService.publishRecord({
+      UbiiClientService.instance.publishRecord({
         topic: this.ubiiComponentMirrorPointer.topic,
         bool: boolean
       });

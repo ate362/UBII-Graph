@@ -82,11 +82,12 @@ export default {
   },
   methods: {
     connectUbii: function() {
-      UbiiClientService.setName('ubii-node-webbrowser VueJS Test');
-      UbiiClientService.connect(this.serverIP, this.servicePort);
+      UbiiClientService.instance.setName('ubii-node-webbrowser VueJS Test');
+      UbiiClientService.instance.setHTTPS(false);
+      UbiiClientService.instance.connect(this.serverIP, this.servicePort);
     },
     getClients: async function() {
-      const res = (UbiiClientService.isConnected()) ? await UbiiClientService.client.callService(
+      const res = (UbiiClientService.instance.isConnected()) ? await UbiiClientService.instance.callService(
         {
           topic: DEFAULT_TOPICS.SERVICES.CLIENT_GET_LIST
         }
@@ -103,7 +104,7 @@ export default {
       }
     },
     getServiceList: async function() {
-      const res = (UbiiClientService.isConnected()) ? await UbiiClientService.client.callService(
+      const res = (UbiiClientService.instance.isConnected()) ? await UbiiClientService.instance.client.callService(
         {
           topic: DEFAULT_TOPICS.SERVICES.SERVER_CONFIG
         }
@@ -120,7 +121,7 @@ export default {
     },
     loadClients: async function ({action}) {
       if (action === LOAD_ROOT_OPTIONS) {
-        const res = (UbiiClientService.isConnected()) ? await UbiiClientService.client.callService(
+        const res = (UbiiClientService.instance.isConnected()) ? await UbiiClientService.instance.client.callService(
           {
             topic: DEFAULT_TOPICS.SERVICES.CLIENT_GET_LIST
           }
@@ -155,7 +156,7 @@ export default {
     },
     loadSession: async function({ action/*, callback*/ }) {
       if (action === LOAD_ROOT_OPTIONS) {
-        const res = (UbiiClientService.isConnected()) ? await UbiiClientService.client.callService(
+        const res = (UbiiClientService.instance.isConnected()) ? await UbiiClientService.instance.client.callService(
           {
             topic: DEFAULT_TOPICS.SERVICES.SESSION_RUNTIME_GET_LIST
           }

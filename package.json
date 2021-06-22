@@ -10,7 +10,7 @@
   "dependencies": {
     "@riophae/vue-treeselect": "^0.4.0",
     "@tum-far/ubii-msg-formats": "^0.15.12",
-    "@tum-far/ubii-node-webbrowser": "^0.1.7",
+    "@tum-far/ubii-node-webbrowser": "^0.2.1",
     "bootstrap-vue": "^2.17.3",
     "core-js": "^3.6.5",
     "litegraph.js": "https://github.com/ate362/litegraph.js",

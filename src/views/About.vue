@@ -17,14 +17,14 @@
         <b-tab title="Clients" active>
           <b-list-group>
             <b-list-group-item>Add Clients to the Graph.</b-list-group-item>
-            <b-list-group-item v-for="clients in addClientsList" :key="clients.id">
+            <b-list-group-item v-for="clientDev in addClientsList" :key="clientDev.id">
               <b-card
                 title="Client.Device.Name"
               >
-              <b-card-text>{{clients.id}}.{{clients.name}}</b-card-text>
+              <b-card-text>{{clientDev.id}}.{{clientDev.name}}</b-card-text>
               <div >
-                <b-button variant="outline-primary" style="margin: 2px;">Add Client to Graph</b-button>
-                <b-button variant="outline-primary" style="margin: 2px;">Remove Client from Graph</b-button>
+                <b-button @click="addClientToGraph(clientDev)" variant="outline-primary" style="margin: 2px;">Add Client to the Graph</b-button>
+                <b-button @click="removeClientNode(clientDev)" variant="outline-primary" style="margin: 2px;">Remove Client from the Graph</b-button>
               </div>
               </b-card>
             </b-list-group-item>
@@ -33,6 +33,17 @@
         <b-tab title="Processing Modules">
           <b-list-group>
             <b-list-group-item>Add Processing Modules to the Graph.</b-list-group-item>
+            <b-list-group-item v-for="proc in addProcsList" :key="proc.id">
+              <b-card
+                title="Processing Module Name"
+              >
+              <b-card-text>{{proc.id}}.{{proc.name}}</b-card-text>
+              <div >
+                <b-button @click="addProcToGraph(proc)" variant="outline-primary" style="margin: 2px;">Add PM the Graph</b-button>
+                <b-button @click="removeProcNode(proc)" variant="outline-primary" style="margin: 2px;">Remove PM from the Graph</b-button>
+              </div>
+              </b-card>
+            </b-list-group-item>
           </b-list-group>
         </b-tab>
       </b-tabs>
@@ -82,41 +93,43 @@ export default {
       clientsOfInterest: null,
 
       addClientsList: [],
-      addProcsList: null,
+      addProcsList: [],
 
       ClSeNodes: []
     };
   },
 
   mounted() {
-    UbiiClientService.setName('ubii-node-webbrowser VueJS Test');
-    UbiiClientService.connect(this.serverIP, this.servicePort);
+    UbiiClientService.instance.setName('ubii-node-webbrowser VueJS Test');
+    UbiiClientService.instance.setHTTPS(false);
+    UbiiClientService.instance.connect(this.serverIP, this.servicePort);
     this.graph = new litegraph.LGraph();
     this.lGraphCanvas = new litegraph.LGraphCanvas('#canvas', this.graph);
     this.graph.start();
     
-    litegraph.LiteGraph.clearRegisteredTypes()
-    this.addClientsToList();
-    this.addProcsToList();
-        
+    litegraph.LiteGraph.clearRegisteredTypes()        
   },
   methods: {
     clearBeforeRender: async function() {
       this.ClSeNodes = []
+      this.addClientsList = []
+      this.addProcsList = []
       this.graph.clear()
       litegraph.LiteGraph.clearRegisteredTypes()
     },
-    addClientsToList: async function() {
-      await UbiiClientService.waitForConnection()
-      const res = (UbiiClientService.isConnected()) ? await UbiiClientService.client.callService(
+    ubiiGetResult: async function(topic) {
+      await UbiiClientService.instance.waitForConnection()
+      const res = await UbiiClientService.instance.client.callService(
         {
-          topic: DEFAULT_TOPICS.SERVICES.CLIENT_GET_LIST
+          topic: topic
         }
-      ) : null
-      
-      const cList = res?.elements ?? {}
+      ) 
+      return res
 
-      cList.filter(val => val.state === 0).forEach(client => {
+    },
+    addClientsToList: async function() {
+      
+      this.clientsOfInterest.filter(val => val.state === 0).forEach(client => {
         client.devices.forEach(dev => {
           this.addClientsList.push(
             {
@@ -126,18 +139,66 @@ export default {
           )
         })
       })
-    
     },
     addProcsToList: async function() {
+      const res = await this.ubiiGetResult(DEFAULT_TOPICS.SERVICES.PM_DATABASE_GET_LIST)
+      const pList = res?.processingModuleList.elements ?? {}
+
+      this.addProcsList = pList.filter(val => val.sessionId === this.selectedSession.id)
+      console.log(this.addProcsList)
+    },
+    loadSession: async function () {
+      const res = await this.ubiiGetResult(DEFAULT_TOPICS.SERVICES.SESSION_RUNTIME_GET_LIST)
+      const sList = res?.sessionList.elements ?? {}
+
+      try { 
+        this.selectedSession = sList.filter(val => val.status === 1 && this.selectedSessionId == val.id)[0]
+      } catch {
+        this.msg = 'Selected Session was not found.'
+        this.trigger= !this.trigger
+      }
+    },
+    loadClients: async function (filts) {
+      const res = await this.ubiiGetResult(DEFAULT_TOPICS.SERVICES.CLIENT_GET_LIST)
+      const sList = res?.clientList.elements ?? {}
+ 
+      const clientFilts = filts.map(val => {
+        return val.split('.')[0]
+      })
+
+      const deviceFilts = filts.map(val => {
+        return val.split('.')[1]
+      })
+
+      try {
+        this.clientsOfInterest = sList.filter(val => val.state === 0 && clientFilts.includes(val.id))
+        this.clientsOfInterest.forEach(client => {
+          client.devices = client.devices.filter(val => deviceFilts.includes(val.name))
+        })
+      } catch {
+        this.msg = 'No Clients are available for this session.'
+        this.trigger= !this.trigger
+      }
       
-      await UbiiClientService.waitForConnection()
-      const res = (UbiiClientService.isConnected()) ? await UbiiClientService.client.callService(
-        {
-          topic: DEFAULT_TOPICS.SERVICES.PM_RUNTIME_GET_LIST
+    },
+    loadOps: async function({ action/*, callback*/ }) {
+      if (action === LOAD_ROOT_OPTIONS) {
+
+        const res = await this.ubiiGetResult(DEFAULT_TOPICS.SERVICES.SESSION_RUNTIME_GET_LIST)
+        const sList = res?.sessionList.elements ?? {}
+
+        try { 
+          this.availableSessions = sList.filter(val => val.status === 1).map(val => {
+            return { 
+              id: val.id,
+              label: `${val.name}`
+            }
+          })
+        } catch {
+          this.msg = 'No sessions available.'
+          this.trigger= !this.trigger// console.log('An empty or a invalid response from the server.')
         }
-      ) : null
-      console.log('hello')
-      console.log(res)
+      }
     },
     registerProcessNode: function(sname, proc, inp, out) {
       //node constructor class
@@ -220,40 +281,26 @@ export default {
       //register in the system
       litegraph.LiteGraph.registerNodeType("Clients/"+clientName+"/"+dev.name, node)
     },
-    addNode: function(name, pos, io, type) {
+    addNode: function(name, pos, io, type, id) {
 
       var node_const = litegraph.LiteGraph.createNode(name);
       node_const.pos = pos;
       this.ClSeNodes.push({
+            id: id,
             type: type,
             edges: io,
             node: node_const
           })
       this.graph.add(node_const);
     },
-    loadProcModules: async function () {
-       const res = (UbiiClientService.isConnected()) ? await UbiiClientService.client.callService(
-          {
-            topic: DEFAULT_TOPICS.SERVICES.SESSION_RUNTIME_GET_LIST
-          }
-        ) : null
-
-        const sList = res?.sessionList ?? {}
-        // console.log(sList)
-        try { 
-          this.selectedSession = sList.filter(val => val.status === 1 && this.selectedSessionId == val.id)[0]
-        } catch {
-          this.msg = 'Selected Session was not found.'
-          this.trigger= !this.trigger
-        }
-    },
-    registerSessionNodes: async function () {
+    
+    registerProcNodesOfSession: async function () {
       if (!this.selectedSession?.processingModules || this.selectedSession.processingModules.length === 0) throw 'Session has no processing modules.'
       this.selectedSession.processingModules.forEach(proc => {
         this.registerProcessNode(this.selectedSession.name, proc, proc.inputs, proc.outputs)
       })
     },
-    loadComponents: async function () {
+    loadClientsOfSessionAndIO: async function () {
        
       const clientsDevices = await this.selectedSession.ioMappings.map(val => {
         const inputArray = val.inputMappings.map(val => {
@@ -268,35 +315,7 @@ export default {
       })
       await this.loadClients(clientsDevices)
     },
-    loadClients: async function (filts) {
-      await UbiiClientService.waitForConnection()
-      const res = (UbiiClientService.isConnected()) ? await UbiiClientService.client.callService(
-        {
-          topic: DEFAULT_TOPICS.SERVICES.CLIENT_GET_LIST
-        }
-      ) : null
-      
-      const sList = res?.elements ?? {}
-      
-      const clientFilts = filts.map(val => {
-        return val.split('.')[0]
-      })
-
-      const deviceFilts = filts.map(val => {
-        return val.split('.')[1]
-      })
-
-      try {
-        this.clientsOfInterest = sList.filter(val => val.state === 0 && clientFilts.includes(val.id))
-        this.clientsOfInterest.forEach(client => {
-          client.devices = client.devices.filter(val => deviceFilts.includes(val.name))
-        })
-      } catch {
-        this.msg = 'No Clients for this session are available.'
-        this.trigger= !this.trigger
-      }
-      
-    },
+    
     registerClientNodes: async function () {
       this.clientsOfInterest.forEach(client => {
         client.devices.forEach(device => {
@@ -307,24 +326,24 @@ export default {
     calcPostions: async function () {
       console.log('TODO CALC POSITIONS')
     },
-    addSessionNodes: async function () {
+    addProcNodes: async function () {
       this.selectedSession.processingModules.forEach(proc => {
         const io = this.selectedSession.ioMappings.filter(val => proc.id === val.processingModuleId)[0]
         proc.position = [600,200];
-        this.addNode("Sessions/"+this.selectedSession.name+"/"+proc.name, proc.position, io, 'Session' )
+        this.addNode("Sessions/"+this.selectedSession.name+"/"+proc.name, proc.position, io, 'Proc', proc.id )
       })
     },
     addClientNodes: async function () {
       this.clientsOfInterest.forEach(client => {
         client.devices.forEach(device => {
           device.position = [200,200];
-          this.addNode("Clients/"+client.name+"/"+device.name, device.position, device.components, 'ClientDevice')
+          this.addNode("Clients/"+client.name+"/"+device.name, device.position, device.components, 'ClientDevice', device.clientId+'.'+device.id)
         })
       })
     },
     connectNodes: async function () {
       const c = this.ClSeNodes.filter(val => val.type === 'ClientDevice')
-      const s = this.ClSeNodes.filter(val => val.type === 'Session')
+      const s = this.ClSeNodes.filter(val => val.type === 'Proc')
       s.forEach(session => {
         session.edges.inputMappings.forEach((i,index) => {
           const dc = c.filter(val => val.edges.filter(e => e.topic === i.topic))[0]
@@ -339,14 +358,16 @@ export default {
     showSessionPipeline: async function() {
       await this.clearBeforeRender()
       if(!this.selectedSessionId) return
-      await this.loadProcModules()
+      await this.loadSession()
       try {
-        await this.registerSessionNodes()
-        await this.loadComponents()
+        await this.registerProcNodesOfSession()
+        await this.loadClientsOfSessionAndIO()
         await this.registerClientNodes()
+        await this.addClientsToList();
+        await this.addProcsToList();
         await this.calcPostions()
         await this.addClientNodes()
-        await this.addSessionNodes()
+        await this.addProcNodes()
         await this.connectNodes()
       } catch (error) {
         console.log(error)
@@ -354,30 +375,85 @@ export default {
       
       // console.log(this.selectedSession)
     },
-    loadOps: async function({ action/*, callback*/ }) {
-      if (action === LOAD_ROOT_OPTIONS) {
-
-        await UbiiClientService.waitForConnection()
-        const res = (UbiiClientService.isConnected()) ? await UbiiClientService.client.callService(
-          {
-            topic: DEFAULT_TOPICS.SERVICES.SESSION_RUNTIME_GET_LIST
-          }
-        ) : null
-
-        const sList = res?.sessionList ?? {}
-
-        try { 
-          this.availableSessions = sList.filter(val => val.status === 1).map(val => {
-              return { 
-                id: val.id,
-                label: `${val.name}`
-              }
-            })
-        } catch {
-          this.msg = 'No sessions available.'
-          this.trigger= !this.trigger// console.log('An empty or a invalid response from the server.')
-        }
+    removeClientNode: async function (c) {
+      const cID = c.id.split('.')[0]+'.'+c.id.split('.')[1]
+      let nodeIndex = -1
+      this.ClSeNodes.forEach((val,index) => {
+        if(val.type === 'ClientDevice' && val.id === cID)
+          nodeIndex = index
+      })
+    
+      if (nodeIndex >= 0) {
+        const cNode = this.ClSeNodes[nodeIndex].node
+        this.graph.remove(cNode)
+        this.ClSeNodes.splice(nodeIndex,1)
       }
+    },
+    removeProcNode: async function (p) {
+      const pID = p.id.split('.')[0]
+      let nodeIndex = -1
+
+      console.log(this.ClSeNodes)
+
+      this.ClSeNodes.forEach((val,index) => {
+        if(val.type === 'Proc' && val.id === pID)
+          nodeIndex = index
+      })
+
+      if (nodeIndex >= 0) {
+        const cNode = this.ClSeNodes[nodeIndex].node
+        this.graph.remove(cNode)
+        this.ClSeNodes.splice(nodeIndex,1)
+      }
+    },
+    addProcToGraph: function (p) {
+      const pID = p.id.split('.')[0]
+      let nodeIndex = -1
+
+      this.ClSeNodes.forEach((val,index) => {
+        if(val.type === 'Proc' && val.id === pID)
+          nodeIndex = index
+      })
+
+      if (nodeIndex >= 0) {
+        const cNode = this.ClSeNodes[nodeIndex].node
+        this.lGraphCanvas.selectNode(cNode)
+        return
+      }
+      // Use filter instead of continue
+      this.addProcsList.forEach(proc => {
+        if (proc.id !== pID) return
+        const io = this.selectedSession.ioMappings.filter(val => proc.id === val.processingModuleId)[0]
+        proc.position = [600,200];
+        this.addNode("Sessions/"+this.selectedSession.name+"/"+proc.name, proc.position, io, 'Proc', proc.id )
+      })
+    },
+    addClientToGraph: function (c) {
+      const cID = c.id.split('.')[0]+'.'+c.id.split('.')[1]
+
+      let nodeIndex = -1
+      this.ClSeNodes.forEach((val,index) => {
+        if(val.type === 'ClientDevice' && val.id === cID)
+          nodeIndex = index
+      })
+
+      if (nodeIndex >= 0) {
+        const cNode = this.ClSeNodes[nodeIndex].node
+        this.lGraphCanvas.selectNode(cNode)
+        return
+      }
+      // Use filter instead of continue
+      this.clientsOfInterest.forEach(client => {
+        if (client.id !== c.id.split('.')[0]) return
+        
+        client.devices.forEach(device => {
+          if (device.id !== c.id.split('.')[1]) return
+          
+          device.position = [200,200];
+          this.addNode("Clients/"+client.name+"/"+device.name, device.position, device.components, 'ClientDevice', device.clientId+'.'+device.id)
+        })
+      })
+
     }
   }
 }
