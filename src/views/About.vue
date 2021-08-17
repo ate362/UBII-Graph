@@ -11,8 +11,12 @@
       :multiple="false" 
       placeholder="Sessions..."/>
   </div>
-  <b-row no-gutters>
-    <b-col>
+  <div>
+    <b-button @click="playGraph()" variant="outline-primary" style="margin: 2px;">Play</b-button>
+    <b-button @click="stopGraph()" variant="outline-primary" style="margin: 2px;">Stop</b-button>
+  </div>
+  <b-row no-gutters class="flex-nowrap">
+    <b-col cols="5">
       <b-tabs content-class="mt-3">
         <b-tab title="Clients" active>
           <b-list-group>
@@ -46,6 +50,35 @@
             </b-list-group-item>
           </b-list-group>
         </b-tab>
+        <b-tab title="Debug">
+          <b-container class="debug-row">
+            <b-row id="dIn" ref="DebugInputs" class="flex-nowrap justify-left" style="border: 1px solid; overflow: auto; padding: 1em"> 
+            </b-row>
+            <b-row id="dOut" ref="DebugOutputs" class="flex-nowrap justify-left" style="border: 1px solid; overflow: auto; padding: 1em"> 
+            </b-row>
+            <b-row style="border: 1px solid">
+              <b-col v-if="debug.func">
+                <div>
+                  <b-card
+                    tag="article"
+                    style="width: 100%; max-height: 20rem;"
+                  >
+                    <b-card-text style="font-size: small;">
+                      function
+                    </b-card-text>
+                    <b-form-textarea
+                      id="textarea-auto-height"
+                      rows="3"
+                      max-rows="8"
+                      v-model="debug.func"
+                      overflow-x:scroll
+                    ></b-form-textarea>
+                  </b-card>
+                </div>
+              </b-col>
+            </b-row>
+          </b-container>
+        </b-tab>
       </b-tabs>
     </b-col><b-col>
     <canvas id="canvas" class='litegraph' width='1024' height='720' style='border: 1px solid;'></canvas>
@@ -63,8 +96,9 @@ import { UbiiClientService } from '@tum-far/ubii-node-webbrowser';
 import { DEFAULT_TOPICS } from '@tum-far/ubii-msg-formats';
 
 import Error from '../components/Error.vue'
+import TopicViewer from '../components/TopicViewer.vue'
 
-// import the component
+import Vue from 'vue'
 import Treeselect from '@riophae/vue-treeselect'
 import { LOAD_ROOT_OPTIONS } from '@riophae/vue-treeselect'
 // import the styles
@@ -95,7 +129,13 @@ export default {
       addClientsList: [],
       addProcsList: [],
 
-      ClSeNodes: []
+      ClSeNodes: [],
+      debug: { 
+        id: null,
+        active_inputs: [],
+        func: null,
+        active_outputs: []
+      }
     };
   },
 
@@ -104,10 +144,11 @@ export default {
     UbiiClientService.instance.setHTTPS(false);
     UbiiClientService.instance.connect(this.serverIP, this.servicePort);
     this.graph = new litegraph.LGraph();
+    this.subgraph = new litegraph.LGraph();
     this.lGraphCanvas = new litegraph.LGraphCanvas('#canvas', this.graph);
-    this.graph.start();
+    // this.graph.start();
     
-    litegraph.LiteGraph.clearRegisteredTypes()        
+    litegraph.LiteGraph.clearRegisteredTypes()      
   },
   methods: {
     clearBeforeRender: async function() {
@@ -150,7 +191,7 @@ export default {
     loadSession: async function () {
       const res = await this.ubiiGetResult(DEFAULT_TOPICS.SERVICES.SESSION_RUNTIME_GET_LIST)
       const sList = res?.sessionList.elements ?? {}
-
+      console.log('Session:', sList)
       try { 
         this.selectedSession = sList.filter(val => val.status === 1 && this.selectedSessionId == val.id)[0]
       } catch {
@@ -158,6 +199,10 @@ export default {
         this.trigger= !this.trigger
       }
     },
+    // loadTopics: async function () {
+    //   const res = await this.ubiiGetResult(DEFAULT_TOPICS.SERVICES.TOPIC_LIST)
+    //   console.log(res)
+    // },
     loadClients: async function (filts) {
       const res = await this.ubiiGetResult(DEFAULT_TOPICS.SERVICES.CLIENT_GET_LIST)
       const sList = res?.clientList.elements ?? {}
@@ -200,11 +245,95 @@ export default {
         }
       }
     },
-    registerProcessNode: function(sname, proc, inp, out) {
+    registerInputTypes: async function() {
+      
+//       import {
+// ProtobufTranslator,
+// MSG_TYPES,
+// DEFAULT_TOPICS,
+// proto
+// } from '@tum-far/ubii-msg-formats'
+// console.log(proto);
+
+
+      const types = ['double', 'bool', 'string', 'ubii.dataStructure.Vector2', 'ubii.dataStructure.Vector3', 'ubii.dataStructure.Vector4',
+       'ubii.dataStructure.Quaternion', 'ubii.dataStructure.Matrix3x2', 'ubii.dataStructure.Matrix4x4', 'ubii.dataStructure.Color', 
+       'ubii.dataStructure.TouchEvent', 'ubii.dataStructure.TouchEventList', 'ubii.dataStructure.KeyEvent', 'ubii.dataStructure.MouseEvent',
+       'ubii.dataStructure.MyoEvent', 'ubii.dataStructure.Pose2D', 'ubii.dataStructure.Pose3D', 'ubii.dataStructure.Object2D', 
+       'ubii.dataStructure.Object3D', 'ubii.dataStructure.Object2DList', 'ubii.dataStructure.Object3DList', 'int32',
+       'float', 'ubii.dataStructure.Int32List', 'ubii.dataStructure.FloatList', 'ubii.dataStructure.DoubleList', 'ubii.dataStructure.StringList',
+       'ubii.dataStructure.BoolList', 'ubii.dataStructure.Image2D', 'ubii.dataStructure.Image2DList', 'ubii.sessions.Session', 'ubii.processing.ProcessingModuleList']
+
+      types.forEach(val => {
+        function node()
+        {
+          this.addOutput(val, val)
+        }
+        node.title = 'Input.' + val
+        node.title_color = "#cf331f"
+        litegraph.LiteGraph.registerNodeType("Input/"+val, node)
+      })
+      
+
+    },
+    registerDebugNode: async function() {
       //node constructor class
       function node()
       {
+        this.addInput('Debug Input')
+      }
+      node.title = 'Debug Node'
+      node.title_color = "#cf331f"
+
+      litegraph.LiteGraph.registerNodeType("Debug/Visualizer", node)
+      
+
+      node.prototype.onConnectionsChange = function(connection, slot, connected, link_info, input_info){
         
+        console.log(link_info)
+        console.log(input_info)
+
+        if (connected) {
+          this.size[0] = 400
+          this.size[1] = 250
+        }
+        else {
+          this.size[0] = 200
+          this.size[1] = 30
+        }
+        
+        node.prototype.onDrawForeground = function(ctx)
+        {
+          this.properties = { height: 200, width: 350 };
+          const startOffset = 40
+          const redRectangleOffset = startOffset
+          
+          if(this.flags.collapsed)
+            return;
+          if(connected) {
+            ctx.fillStyle = "#555";
+            ctx.fillRect(0,startOffset,this.size[0],this.size[1]-startOffset);
+            
+            ctx.strokeStyle = 'red';
+            const cornerRadius = 40
+            const redRectangleWidth = this.size[0]
+            const redRectangleHeight = this.size[1] - redRectangleOffset
+            const recX = 0
+            const recY = redRectangleOffset
+
+            ctx.strokeRect(recX + (cornerRadius / 2), recY + (cornerRadius / 2), redRectangleWidth - cornerRadius, redRectangleHeight - cornerRadius)
+          }
+        }
+      } 
+
+    },
+    registerProcessNode: function(sname, proc, inp, out) {
+
+      //node constructor class
+      function node()
+      {
+        this.size = [140, 80];
+  
         inp.forEach(i => {
           this.addInput(i.internalName, i.messageFormat)
         })
@@ -215,6 +344,22 @@ export default {
       }
       node.title = proc.name
       node.title_color = "#243";
+      node.slot_start_y = 20;
+      
+      let that = this
+      
+      node.prototype.onDrawForeground = function(ctx)
+      {
+        this.size[0] = 400
+        if(this.flags.collapsed)
+          return;
+        ctx.fillStyle = "#555";
+        ctx.fillRect(0,0,this.size[0],20);
+        
+        ctx.fillStyle = "#AAA";
+        ctx.fillText("Proc.ID: "+proc.id, 2, 15 );
+      }
+
 
       //function to call when the node is executed
       node.prototype.onExecute = function()
@@ -229,14 +374,110 @@ export default {
       }
 
       litegraph.LiteGraph.registerNodeType("Sessions/"+sname+"/"+proc.name, node)
+      
+      node.prototype.onDrawTitle = function(ctx) {
+        if (this.flags.collapsed) {
+            return;
+        }
 
+        ctx.fillStyle = "#555";
+        var w = litegraph.LiteGraph.NODE_TITLE_HEIGHT;
+        var x = this.size[0] - w;
+        ctx.fillRect(x, -w, w, w);
+        ctx.fillStyle = "#333";
+        ctx.beginPath();
+        ctx.moveTo(x + w * 0.2, -w * 0.6);
+        ctx.lineTo(x + w * 0.8, -w * 0.6);
+        ctx.lineTo(x + w * 0.5, -w * 0.3);
+        ctx.fill();
+      };
+
+      node.prototype.onConnectionsChange = function(inOrOut, slot, state, link_info, input_info) {
+          if (!that.debug.id) return
+          // console.log('Input or Output', inOrOut);
+          // console.log('slot', slot);
+          // console.log('state', state);
+          // console.log('link_info', link_info);
+          // console.log('input_info', input_info);
+
+          // input remove
+          // output remove
+          // input add
+          // output add
+          // play? active?
+          //
+          let nodeIndex = -1
+          if(inOrOut == 1 && !state) {
+            that.debug.active_inputs.forEach((val,index) => {
+              if(val.name === input_info.name)
+                nodeIndex = index
+            })
+            if (nodeIndex > -1) {  
+              let element = that.debug.active_inputs[nodeIndex].component.$el
+              element.remove()
+              that.debug.active_inputs.splice(nodeIndex, 1);
+            }
+          } else if (inOrOut == 2 && !state) {
+            that.debug.active_outputs.forEach((val,index) => {
+              if(val.name === input_info.name)
+                nodeIndex = index
+            })
+            if (nodeIndex > -1) {  
+              let element = that.debug.active_outputs[nodeIndex].component.$el
+              element.remove()
+              that.debug.active_outputs.splice(nodeIndex, 1);
+            }
+          } else if (inOrOut == 1 && state) {
+              const topic = that.selectedSession.ioMappings.filter(pval => pval.processingModuleId === this.id)[0].inputMappings.filter(io => io.inputName === input_info.name)[0].topic
+              that.debug.active_inputs.push({name: input_info.name, type: input_info.type, topic: topic, component: that.dynInComp(input_info.name, input_info.type, "in")})
+          } else if (inOrOut == 2 && state) {
+              const topic = that.selectedSession.ioMappings.filter(pval => pval.processingModuleId === this.id)[0].outputMappings.filter(io => io.outputName === input_info.name)[0].topic
+              that.debug.active_outputs.push({name: input_info.name, type: input_info.type, topic: topic, component: that.dynInComp(input_info.name, input_info.type, "out")})
+          }
+      },
+      node.prototype.onMouseDown = function(e, pos) {
+        if (
+            !this.flags.collapsed &&
+            pos[0] > this.size[0] - litegraph.LiteGraph.NODE_TITLE_HEIGHT &&
+            pos[1] < 0
+        ) {
+            that.debug.id = this.id
+            this.inputs.filter(val => val.link !== null).forEach((val) => {
+              // Still need connection to graph inputs and outputs, also [0] garanteed?
+              const topic = that.selectedSession.ioMappings.filter(pval => pval.processingModuleId === this.id)[0].inputMappings.filter(io => io.inputName === val.name)[0].topic
+              that.debug.active_inputs.push({name: val.name, type: val.type, topic: topic, component: that.dynInComp(val.name, val.type, "in")})
+            })
+
+            that.debug.func = that.selectedSession.processingModules.filter(val => val.id === this.id).map(val => {
+              return val.onProcessingStringified
+            })[0]
+            
+            this.outputs.filter(val => val.link !== null).forEach((val) => {
+              // Still need connection to graph inputs and outputs, also [0] garanteed?
+              const topic = that.selectedSession.ioMappings.filter(pval => pval.processingModuleId === this.id)[0].outputMappings.filter(io => io.outputName === val.name)[0].topic
+              that.debug.active_outputs.push({name: val.name, type: val.type, topic: topic, component: that.dynInComp(val.name, val.type, "out")})
+            })
+
+        }
+      };
+
+    },
+    dynInComp: function (name, type, inOrOut) {
+
+      var ComponentClass = Vue.extend(TopicViewer)
+      var instance = new ComponentClass({
+            propsData: { name: name, type: type }
+        })
+      instance.$mount() // pass nothing
+      if (inOrOut === "in") {this.$refs.DebugInputs.appendChild(instance.$el)} else {this.$refs.DebugOutputs.appendChild(instance.$el)}
+      
+      return instance
     },
     registerClientNode: function (clientName, dev, comp) {
 
       //node constructor class
       function node()
       {
-        
         comp.forEach(c => {
           if (c.ioType == 1)
             this.addInput(c.topic.split("/").pop(), c.messageFormat)
@@ -262,8 +503,6 @@ export default {
       }
 
 
-      
-
       //function to call when the node is executed
       node.prototype.onExecute = function()
       {
@@ -276,14 +515,13 @@ export default {
         // this.setOutputData( 0, A + B );
       }
 
-      
-
       //register in the system
       litegraph.LiteGraph.registerNodeType("Clients/"+clientName+"/"+dev.name, node)
     },
     addNode: function(name, pos, io, type, id) {
 
       var node_const = litegraph.LiteGraph.createNode(name);
+      node_const.id = id
       node_const.pos = pos;
       this.ClSeNodes.push({
             id: id,
@@ -297,6 +535,7 @@ export default {
     registerProcNodesOfSession: async function () {
       if (!this.selectedSession?.processingModules || this.selectedSession.processingModules.length === 0) throw 'Session has no processing modules.'
       this.selectedSession.processingModules.forEach(proc => {
+        console.log(proc)
         this.registerProcessNode(this.selectedSession.name, proc, proc.inputs, proc.outputs)
       })
     },
@@ -357,14 +596,16 @@ export default {
     },
     showSessionPipeline: async function() {
       await this.clearBeforeRender()
+      this.registerInputTypes()
       if(!this.selectedSessionId) return
       await this.loadSession()
       try {
+        await this.registerDebugNode()
         await this.registerProcNodesOfSession()
         await this.loadClientsOfSessionAndIO()
         await this.registerClientNodes()
-        await this.addClientsToList();
-        await this.addProcsToList();
+        await this.addClientsToList()
+        await this.addProcsToList()
         await this.calcPostions()
         await this.addClientNodes()
         await this.addProcNodes()
@@ -453,9 +694,64 @@ export default {
           this.addNode("Clients/"+client.name+"/"+device.name, device.position, device.components, 'ClientDevice', device.clientId+'.'+device.id)
         })
       })
+    },
 
+    playGraph: async function () {
+      if (this.graph.status == litegraph.LGraph.STATUS_STOPPED) {
+        this.debug.active_inputs.forEach(val => {
+          UbiiClientService.instance.unsubscribeTopic(
+            val.topic
+          );
+        })
+        this.debug.active_inputs.forEach(val => {
+          UbiiClientService.instance.subscribeTopic(
+            val.topic,
+            (data) => {
+              switch(val.type) {
+                case 'ubii.dataStructure.Vector2': val.component.ubii_updateVector2(data); break;
+                case 'bool': val.component.ubii_updateBool(data); break;
+              }  
+            }
+          );
+        })
+
+        this.debug.active_outputs.forEach(val => {
+          UbiiClientService.instance.unsubscribeTopic(
+            val.topic
+          );
+        })
+        this.debug.active_outputs.forEach(val => {
+
+          UbiiClientService.instance.subscribeTopic(
+            val.topic,
+            (data) => {
+              switch(val.type) {
+                case 'ubii.dataStructure.Vector2': val.component.ubii_updateVector2(data); break;
+                case 'bool': val.component.ubii_updateBool(data); break;
+              }  
+            }
+          );
+        })
+        
+        this.graph.start();
+      }
+    },
+    stopGraph: async function () {
+      this.debug.active_inputs.forEach(val => {
+        UbiiClientService.instance.unsubscribeTopic(
+          val.topic
+        );
+      })
+
+      this.debug.active_outputs.forEach(val => {
+        UbiiClientService.instance.unsubscribeTopic(
+          val.topic
+        );
+      })
+      this.graph.stop();
     }
   }
+  
 }
 </script>
 
