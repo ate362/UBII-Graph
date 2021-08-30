@@ -12,6 +12,7 @@
     <div style="display: flex; justify-content: center">
       <b-button variant="outline-primary" @click="getServiceList()">ShowAllAvailableServices</b-button>
       <b-button variant="outline-primary" @click="getClients()">ShowAllConnectedClients</b-button>
+      <b-button variant="outline-primary" @click="getLatenz()">ShowLatenz</b-button>
       <!-- <b-button variant="outline-primary" @click="getSessionList()">ShowAllSessions</b-button> -->
     </div>
     <div style="display: flex; justify-content: center">
@@ -111,13 +112,22 @@ export default {
       ) : null
 
       const constJson = res?.server?.constantsJson ?? '{}'
-      console.log(constJson)
+
       try { 
         const jRes = await JSON.parse(constJson)
         this.obj_services = jRes['DEFAULT_TOPICS']['SERVICES']
       } catch {
         // console.log('An empty or a invalid response from the server.')
       }
+    },
+    getLatenz: async function () {
+       const res = (UbiiClientService.instance.isConnected()) ? await UbiiClientService.instance.client.callService(
+        {
+          topic: DEFAULT_TOPICS.SERVICES.LATENZ_CLIENTS_LIST
+        }
+      ) : null
+
+      console.log(res)
     },
     loadClients: async function ({action}) {
       if (action === LOAD_ROOT_OPTIONS) {

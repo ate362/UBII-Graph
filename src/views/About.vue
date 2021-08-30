@@ -139,10 +139,14 @@ export default {
     };
   },
 
-  mounted() {
+  async mounted() {
     UbiiClientService.instance.setName('ubii-node-webbrowser VueJS Test');
     UbiiClientService.instance.setHTTPS(false);
-    UbiiClientService.instance.connect(this.serverIP, this.servicePort);
+    
+    await UbiiClientService.instance.connect(this.serverIP, this.servicePort);
+    // const cid = UbiiClientService.instance.getClientID()
+    // this.ws = await new UbiiWebsocketService(cid, 'localhost', 8104)
+    
     this.graph = new litegraph.LGraph();
     this.subgraph = new litegraph.LGraph();
     this.lGraphCanvas = new litegraph.LGraphCanvas('#canvas', this.graph);
@@ -364,13 +368,9 @@ export default {
       //function to call when the node is executed
       node.prototype.onExecute = function()
       {
-        // var A = this.getInputData(0);
-        // if( A === undefined )
-        //   A = 0;
-        // var B = this.getInputData(1);
-        // if( B === undefined )
-        //   B = 0;
-        // this.setOutputData( 0, A + B );
+        out.forEach((_,i) => {
+          this.triggerSlot(i)
+        })
       }
 
       litegraph.LiteGraph.registerNodeType("Sessions/"+sname+"/"+proc.name, node)
@@ -457,6 +457,8 @@ export default {
               const topic = that.selectedSession.ioMappings.filter(pval => pval.processingModuleId === this.id)[0].outputMappings.filter(io => io.outputName === val.name)[0].topic
               that.debug.active_outputs.push({name: val.name, type: val.type, topic: topic, component: that.dynInComp(val.name, val.type, "out")})
             })
+            console.log(that.graph.status)
+            if(that.graph.status == 2) that.playGraph();
 
         }
       };
@@ -506,13 +508,10 @@ export default {
       //function to call when the node is executed
       node.prototype.onExecute = function()
       {
-        // var A = this.getInputData(0);
-        // if( A === undefined )
-        //   A = 0;
-        // var B = this.getInputData(1);
-        // if( B === undefined )
-        //   B = 0;
-        // this.setOutputData( 0, A + B );
+        let o = 0
+        for (let i = 0; i < comp.length; i++) {
+          if (comp[i].ioType != 1) {this.triggerSlot(o); o++;}
+        }
       }
 
       //register in the system
@@ -697,44 +696,46 @@ export default {
     },
 
     playGraph: async function () {
-      if (this.graph.status == litegraph.LGraph.STATUS_STOPPED) {
-        this.debug.active_inputs.forEach(val => {
-          UbiiClientService.instance.unsubscribeTopic(
-            val.topic
-          );
-        })
-        this.debug.active_inputs.forEach(val => {
-          UbiiClientService.instance.subscribeTopic(
-            val.topic,
-            (data) => {
-              switch(val.type) {
-                case 'ubii.dataStructure.Vector2': val.component.ubii_updateVector2(data); break;
-                case 'bool': val.component.ubii_updateBool(data); break;
-              }  
-            }
-          );
-        })
+      // this.ws.onMessageReceived(this.wsCallback)
+      // const enc = new TextEncoder();
+      // this.ws.send(enc.encode("PING"))
+      this.debug.active_inputs.forEach(val => {
+        UbiiClientService.instance.unsubscribeTopic(
+          val.topic
+        );
+      })
+      this.debug.active_inputs.forEach(val => {
+        UbiiClientService.instance.subscribeTopic(
+          val.topic,
+          (data) => {
+            switch(val.type) {
+              case 'ubii.dataStructure.Vector2': val.component.ubii_updateVector2(data); break;
+              case 'bool': val.component.ubii_updateBool(data); break;
+            }  
+          }
+        );
+      })
 
-        this.debug.active_outputs.forEach(val => {
-          UbiiClientService.instance.unsubscribeTopic(
-            val.topic
-          );
-        })
-        this.debug.active_outputs.forEach(val => {
+      this.debug.active_outputs.forEach(val => {
+        UbiiClientService.instance.unsubscribeTopic(
+          val.topic
+        );
+      })
+      this.debug.active_outputs.forEach(val => {
 
-          UbiiClientService.instance.subscribeTopic(
-            val.topic,
-            (data) => {
-              switch(val.type) {
-                case 'ubii.dataStructure.Vector2': val.component.ubii_updateVector2(data); break;
-                case 'bool': val.component.ubii_updateBool(data); break;
-              }  
-            }
-          );
-        })
-        
-        this.graph.start();
-      }
+        UbiiClientService.instance.subscribeTopic(
+          val.topic,
+          (data) => {
+            switch(val.type) {
+              case 'ubii.dataStructure.Vector2': val.component.ubii_updateVector2(data); break;
+              case 'bool': val.component.ubii_updateBool(data); break;
+            }  
+          }
+        );
+      })
+      
+      this.graph.start();
+
     },
     stopGraph: async function () {
       this.debug.active_inputs.forEach(val => {
@@ -749,6 +750,10 @@ export default {
         );
       })
       this.graph.stop();
+    },
+    wsCallback: async function (msg) {
+      var enc = new TextDecoder("utf-8");
+      console.log(enc.decode(msg.data))
     }
   }
   
